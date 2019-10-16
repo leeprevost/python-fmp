@@ -24,8 +24,9 @@ Examples:
 	 #get financial statement and return as python dictionary
 	 inc_statmt_dic = fmp.financial_statements(period='quarter', ret_df = False)
 	 
-	 # other methods in class support Company Profile, Company Financial Statments (batch -- default is 3 at a time), company financial ratios, company Enterprise Value, 
-	 # Company Key Metrics, Company Financial Growth, Company rating, and others as documented on FinanicalModelingPrep API
+	 # other methods in class support Company Profile, Company Financial Statments (batch -- default is 3 at a time), 
+	 # company financial ratios, company Enterprise Value, Company Key Metrics, Company Financial Growth, Company rating, 
+	 # and others as documented on FinanicalModelingPrep API
 	 
 
 ### Prerequisites
@@ -47,6 +48,7 @@ Examples:
 ### Future
 
 This is currently based on FinancialModelingPrep API version 3.   The comapny is making some adjustments to their API which we hope will result in the following:
+
 * Clean industry standard JSON.  Currently the API wraps all data in quotes including numeric data.  This requires some post processing to convert from strings to integer or float objects.
 
 * Currently the batch prootocols put out a different nesting strucutre than the single symbols protocols which require post processing changes in order to convert to pandas dataframes.
@@ -71,7 +73,7 @@ Please reach out or make contributions.  This is a single person project current
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md) file for details
+This project is licensed under the Apache License - see the [LICENSE.md](LICENSE.md) file for details
 
 ## Acknowledgments
 

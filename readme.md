@@ -45,6 +45,7 @@ Examples:
 ```
 
 ### Future
+
 This is currently based on FinancialModelingPrep API version 3.   The comapny is making some adjustments to their API which we hope will result in the following:
 * Clean industry standard JSON.  Currently the API wraps all data in quotes including numeric data.  This requires some post processing to convert from strings to integer or float objects.
 * Currently the batch prootocols put out a different nesting strucutre than the single symbols protocols which require post processing changes in order to convert to pandas dataframes.

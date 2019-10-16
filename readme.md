@@ -43,7 +43,7 @@ Examples:
    1) Clone this repository to your machine
    2) import the class object as in example above.
 
-```
+
 
 ### Future
 

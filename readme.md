@@ -42,7 +42,8 @@ Examples:
 
    1) Clone this repository to your machine
    2) import the class object as in example above.
-
+```
+```
 
 
 ### Future
@@ -57,6 +58,7 @@ This is currently based on FinancialModelingPrep API version 3.   The comapny is
 
 
 
+```
 ```
 
 

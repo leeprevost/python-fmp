@@ -1,6 +1,6 @@
 # Python FMP
 
-A python class implemtation leveraging the Finanicial Modeling Prep API [docs](https://financialmodelingprep.com/developer/docs/).
+A python class implementation leveraging the Finanicial Modeling Prep API [docs](https://financialmodelingprep.com/developer/docs/).
 
 ## Getting Started
 
@@ -35,6 +35,7 @@ Examples:
 * requests
 * itertools
 * re
+* python 3 or later
 ```
 ```
 
@@ -61,6 +62,8 @@ This is currently based on FinancialModelingPrep API version 3.   The comapny is
 ```
 ```
 
+## Updates
+11/12/2019 - added partial support for version 3.1 API now in beta.   Still seeing some instability (server throtting errors).  Had to add a json ditionary normalizer to compensate for the differences in the returned formats between version 3 and 3.1 as well as batch vs. single stock endpoints.  Also, have tested the main financial_statements method fairly extensively.  Other methods are not used in my application and are not thoroughly tested.
 
 ## Contributing
 

@@ -1,6 +1,17 @@
+'''
+Wrapper for financialModelingPrep API
+
+written: Lee Prevost, lee@prevost.net
+dates: October, 2019
+updated: November 2019 to support version 3.1 API (single batch)
+
+@Todo:
+    1) need to test single stock for version 3.1   - done
+    2) Test other methods beyond main financialstatements method.
+'''
+
 import requests
 import pandas as pd
-from pandas.io.json import json_normalize
 import re
 import datetime as dt
 import json
@@ -20,23 +31,29 @@ class FinancialModelingPrep ():
             self.set_symbols(symbols)
 
         self.base_url = "https://financialmodelingprep.com/api/"
+        self.versions = [3, 3.1]
 
     def set_symbols(self, symbols):
 
         if type(symbols) is str:
             symbols = [symbols]
-
+        symbols = [symbol.upper() for symbol in symbols]
 
         self.symbols = symbols
 
+    def _camelize_cols(self, col_list):
+        new_cols=[]
+        for col in col_list:
+            l = col.split(" ")
+            if len(l)>1:
+                col = "".join([item.capitalize() for item in l])
+            else: col = l[0]
+            col = col[0].lower() + col[1:]
+            new_cols.append(col)
+        return new_cols
 
 
     def _get_payload(self, url, params, **kwargs):
-
-        def camelize(string):
-            l = string.split(" ")
-
-            return "".join([word.capitalize() for word in l])
 
         def convert_types(d):
             for k, v in d.items():
@@ -62,30 +79,41 @@ class FinancialModelingPrep ():
                     if v == "":
                         new_v = np.nan
                 d[k] = new_v
-            d = {camelize(k): v for k, v in d.items()}
+            #d = {camelize(k): v for k, v in d.items()}
             return d
 
         params.update(kwargs)
         r = requests.get(url, params)
         #print(r.url)
-        return json.loads(r.text, object_hook=convert_types)
+        if "3.1" in url:
+            return json.loads(r.text)
+        else:
+            return json.loads(r.text, object_hook=convert_types)
 
-    def _json_normalize(self, jd):
-
+    def _normalize_jd(self, jd, base_key):
+        """ Make sure that all json has a list of dictionaries returned under financialStatementList"""
         if type(jd) is not dict:
-            print("expecting a dictionary")
+            raise TypeError("Expecting a dictionary but got type: {}".format(type(jd)))
 
-        statement_name = list(jd.keys())[0]
+        if 'financialStatementList' in jd.keys():
+            # case for batch in version 3
+            return jd
+        elif 'error' in jd.keys():
+            # case for error in either versions
+            raise ValueError("Error: {} from {}".format(jd['error'], self.url))
+        elif 'symbol' in jd.keys() or "Symbol" in jd.keys():
+            # case for single shot in ver 3.1
+            #just make the return payload a list
+            return {base_key: [jd]}
 
-        frames = [symbol_data for symbol_data in jd[statement_name]]
-
-
-    def financial_statements(self, chunksize = 3, type = 'is', ret_df=True, **kwargs ):
+    def financial_statements(self, chunksize = 3, version=3, type = 'is', ret_df=True, **kwargs ):
 
         '''Returns an aggregated dataframe of financial statements
 
         parameters:
-        chunksize: integer, default = 3.   Size of batch for each fetch.
+        chunksize: integer, default = 3.   Size of batch for each fetch.  Note: API version 3.1
+            only supports batch size = 1 initially.
+        version: integer, version of API for fmp.   Currently support 3 and 3.1 (beta)
         type: string, "bs", "cf" or "is".  Default is "is".
               'is' - income statement
               'cf' - cash flow statement
@@ -93,41 +121,72 @@ class FinancialModelingPrep ():
         ret_df: bool, default= True.  return dataframe (True) or json dictionary (False).
         period: string, "quarter" or "annual." Period for reporting data.
         **kwargs - other parameters for the web request (eg. format = "json")
+
+        Added 11/2019 - added support for version 3.1 API.  Initially supports chunksize =1 only.
+
+        Note:  Format of returned json date varies across API versions.   Here are examples:
+
+             Version 3.1 (single) = json structure --
+                  {
+                      "symbol" : "T",
+                      "financials" : [ {
+                        "date" : "2018-12-31",
+                        "revenue" : 170756000000,
+                        "revenueGrowth" : 0.0636,
+                        "costOfRevenue" : 79419000000,
+                        "grossProfit" : 91337000000,  .......
+
+              Version 3 (batch)
+                   {
+                      "financialStatementList" : [ {
+                        "symbol" : "T",
+                        "financials" : [ {
+                          "date" : "2018-12-31",
+                          "Revenue" : "170756000000.0",
+                          "Revenue Growth" : "0.0636",
+                          "Cost of Revenue" : "79419000000.0",
+                          "Gross Profit" : "91337000000.0", ......
+
+              This function leverages _normalize_jd to normalize data to a list of dictionies with "symbol" and "financials" as keys and with financial
+              containing periodic data in a list of dictionaries..
+
         '''
 
         type_dict = {'is': 'financials/income-statement',
                     'bs': 'financials/balance-sheet-statement',
                     'cf': 'financials/cash-flow-statement'}
 
+        if version not in self.versions:
+            raise ValueError("Version = {} is unsupported".format(str(version)))
+        if version == 3.1 and chunksize > 1:
+            raise Warning("Initial version of api only supports 1 stock at a time or chunksize = 1")
+        base_key = "financialStatementList"
 
-        base_key = 'Financialstatementlist'
         chunks = self._grouper(self.symbols, chunksize)
         self.params = params = kwargs
 
         l = []
-        d = {}
-        jd = {}
+
         for chunk in chunks:
             chunk = [c for c in chunk if c is not None]
             symbollist = (",").join(chunk)
-            url =  "{0}v3/{1}/{2}".format(self.base_url, type_dict[type], symbollist)
+            url = "{0}v{1}/{2}/{3}".format(self.base_url, str(version), type_dict[type], symbollist)
             self.url = url
             print ("Getting chunk {}".format(chunk))
             d = self._get_payload(url, params)
-            try:
-                l.extend(d[base_key])
-            except:
-                #print(jd)
-                l.append(d)
 
-        jd.update({base_key:l})
+            d = self._normalize_jd(d, base_key)
+            l.extend(d[base_key])
+
+
+
         self._last_jd = {'source': 'financial_statement',
                     'base_key': base_key,
-                    'payload': jd}
+                    'payload': l}
         if ret_df:
             return self._return_agg_df()
         else:
-            return jd
+            return self._last_jd
 
     def company_profile(self, **kwargs):
 
@@ -221,27 +280,43 @@ class FinancialModelingPrep ():
         return zip_longest(*args, fillvalue=fillvalue)
 
     def _return_agg_df(self):
-        jd = self._last_jd['payload']
-        base_key = self._last_jd['base_key']
-        payload = jd[base_key]
-
-        data = payload[0]['Financials']
-        types = {k:type(v) for k, v in data[0].items()}
-        change = {Decimal: 'f',
-            dt.date: 'M'}
-
-        new_types = {k: change[v] for k, v in types.items() if v in change.keys()}
-        types.update(new_types)
+        jd = self._last_jd
+        payload = jd['payload']  # should be list of dictionaries with "sybmol" and "financials" in keys.  financials is list of periodic data
+        #ex_data = payload[0]['financials'][0]
+        #types = {k: type(v) for k,v in ex_data.items()}
+        #change = {Decimal: 'f',
+        #    dt.date: 'M'}
+        #new_types = {k: change[v] for k, v in types.items() if v in change.keys()}
+        #types.update(new_types)
         l = []
-        for d in payload:
-            df = pd.DataFrame.from_dict(d['Financials']).astype(types)
-            df.insert(1, 'Symbol', d['Symbol'])
-            l.append(df)
-        df = pd.concat([frame for frame in l]).sort_values(['Symbol', 'Date'])
 
-        return df.reset_index(drop=True).set_index(['Symbol', 'Date'])
+        for d in payload:
+            df = pd.DataFrame.from_dict(d['financials'])#.astype(types)
+            df.columns = self._camelize_cols(df.columns)
+            df.insert(1, 'symbol', d['symbol'])
+            l.append(df)
+        df = pd.concat([frame for frame in l]).sort_values(['symbol', 'date'])
+        return df.set_index(['symbol', 'date'], drop = True)
 
 
 
 
     #def _generic_batch(self, type, **kwargs):
+
+#for testing/debug
+if __name__ == '__main__':
+    test_cases = {'symbols1': ['MSFT', 'T'],
+                  'symbols2': "CRM",
+                  'symbols3': ['ORCL', 'T', 'HUBS'],
+                  'symbols4': ['ORCL', 'T', 'HUBS', 'AVLR']
+                  }
+
+    fmp = FinancialModelingPrep()
+
+    results ={}
+    for k, v in test_cases.items():
+        fmp.set_symbols(v)
+        df1 = fmp.financial_statements()
+        df2 = fmp.financial_statements(chunksize=1, version=3.1)
+        df3 = fmp.financial_statements(chunksize=1, version = 3.1, period='quarter')
+        results.update({k: [df1, df2, df3]})

@@ -18,6 +18,7 @@ import json
 from decimal import Decimal
 import numpy as np
 from itertools import zip_longest
+import time
 
 anndateformat = '%Y-%m'
 quarterdateformat = '%Y-%m-%d'
@@ -83,12 +84,21 @@ class FinancialModelingPrep ():
             return d
 
         params.update(kwargs)
-        r = requests.get(url, params)
-        #print(r.url)
-        if "3.1" in url:
-            return json.loads(r.text)
-        else:
-            return json.loads(r.text, object_hook=convert_types)
+        retries=1
+        while retries < 3:
+            print("getting: {}".format(url))
+            r = requests.get(url, params)
+            if "3.1" in url:
+                jd= json.loads(r.text)
+            else:
+                jd= json.loads(r.text, object_hook=convert_types)
+            if "error" not in jd.keys() and r.ok:
+                break
+            print("We have an error, retrying: {}".format(r.text))
+            time.sleep(1*retries*retries)
+            retries+=1
+        return jd
+
 
     def _normalize_jd(self, jd, base_key):
         """ Make sure that all json has a list of dictionaries returned under financialStatementList"""
@@ -172,7 +182,10 @@ class FinancialModelingPrep ():
             symbollist = (",").join(chunk)
             url = "{0}v{1}/{2}/{3}".format(self.base_url, str(version), type_dict[type], symbollist)
             self.url = url
-            print ("Getting chunk {}".format(chunk))
+            print ("Getting chunk {}".format(url))
+            print('Getting this symbollist:', symbollist)
+            print('Getting this chunk:', chunk)
+            print('getting this type', type_dict[type])
             d = self._get_payload(url, params)
 
             d = self._normalize_jd(d, base_key)

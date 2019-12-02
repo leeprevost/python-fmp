@@ -19,6 +19,9 @@ from decimal import Decimal
 import numpy as np
 from itertools import zip_longest
 import time
+from requests.adapters import HTTPAdapter
+from requests.packages.urllib3.util.retry import Retry
+
 
 anndateformat = '%Y-%m'
 quarterdateformat = '%Y-%m-%d'
@@ -33,6 +36,10 @@ class FinancialModelingPrep ():
 
         self.base_url = "https://financialmodelingprep.com/api/"
         self.versions = [3, 3.1]
+        sess=requests.Session()
+        retries = Retry(total=3, backoff_factor =1)
+        sess.mount(self.base_url, HTTPAdapter(max_retries=retries))
+        self.sess = sess
 
     def set_symbols(self, symbols):
 
@@ -84,37 +91,34 @@ class FinancialModelingPrep ():
             return d
 
         params.update(kwargs)
-        retries=1
-        while retries < 3:
-            print("getting: {}".format(url))
-            r = requests.get(url, params)
-            if "3.1" in url:
-                jd= json.loads(r.text)
-            else:
-                jd= json.loads(r.text, object_hook=convert_types)
-            if "error" not in jd.keys() and r.ok:
-                break
-            print("We have an error, retrying: {}".format(r.text))
-            time.sleep(1*retries*retries)
-            retries+=1
-        return jd
+
+        r = requests.get(url, params, timeout=3.1)
+        print("getting: {}".format(r.url))
+        if "3.1" in url:
+            raw_jd = json.loads(r.text)
+        else:
+            raw_jd = json.loads(r.text, object_hook=convert_types)
+
+        #self._last_jd = jd
+        return raw_jd
 
 
-    def _normalize_jd(self, jd, base_key):
+    def _normalize_jd(self, jd, base_key, symbollist):
         """ Make sure that all json has a list of dictionaries returned under financialStatementList"""
         if type(jd) is not dict:
             raise TypeError("Expecting a dictionary but got type: {}".format(type(jd)))
 
-        if 'financialStatementList' in jd.keys():
+        if 'error' in jd.keys():    #handles no data errors
+            return {'errors' : {symbollist: jd}}
+
+        if base_key in jd.keys():
             # case for batch in version 3
-            return jd
-        elif 'error' in jd.keys():
-            # case for error in either versions
-            raise ValueError("Error: {} from {}".format(jd['error'], self.url))
-        elif 'symbol' in jd.keys() or "Symbol" in jd.keys():
-            # case for single shot in ver 3.1
-            #just make the return payload a list
+           return jd
+
+        else:
             return {base_key: [jd]}
+
+
 
     def financial_statements(self, chunksize = 3, version=3, type = 'is', ret_df=True, **kwargs ):
 
@@ -175,27 +179,25 @@ class FinancialModelingPrep ():
         chunks = self._grouper(self.symbols, chunksize)
         self.params = params = kwargs
 
-        l = []
-
+        payload = []
+        errors = []
         for chunk in chunks:
             chunk = [c for c in chunk if c is not None]
             symbollist = (",").join(chunk)
             url = "{0}v{1}/{2}/{3}".format(self.base_url, str(version), type_dict[type], symbollist)
-            self.url = url
-            print ("Getting chunk {}".format(url))
-            print('Getting this symbollist:', symbollist)
-            print('Getting this chunk:', chunk)
-            print('getting this type', type_dict[type])
-            d = self._get_payload(url, params)
 
-            d = self._normalize_jd(d, base_key)
-            l.extend(d[base_key])
+            raw_jd = self._get_payload(url, params)
+            norm_jd = self._normalize_jd(raw_jd, base_key, symbollist)
 
-
+            if "errors" in norm_jd.keys():
+                errors.extend([norm_jd['errors']])
+            else:
+                payload.extend(norm_jd[base_key])
 
         self._last_jd = {'source': 'financial_statement',
                     'base_key': base_key,
-                    'payload': l}
+                    'payload': payload,
+                    'errors': errors}
         if ret_df:
             return self._return_agg_df()
         else:
@@ -295,6 +297,10 @@ class FinancialModelingPrep ():
     def _return_agg_df(self):
         jd = self._last_jd
         payload = jd['payload']  # should be list of dictionaries with "sybmol" and "financials" in keys.  financials is list of periodic data
+        if "errors" in jd.keys():
+            errors = jd['errors']
+        else:
+            errors = None
         #ex_data = payload[0]['financials'][0]
         #types = {k: type(v) for k,v in ex_data.items()}
         #change = {Decimal: 'f',
@@ -308,8 +314,11 @@ class FinancialModelingPrep ():
             df.columns = self._camelize_cols(df.columns)
             df.insert(1, 'symbol', d['symbol'])
             l.append(df)
-        df = pd.concat([frame for frame in l]).sort_values(['symbol', 'date'])
-        return df.set_index(['symbol', 'date'], drop = True)
+        if l:
+            df = pd.concat([frame for frame in l]).sort_values(['symbol', 'date'])
+            return ({'errors': errors}, df.set_index(['symbol', 'date'], drop = True))
+        else:
+            return({'errors': errors}, None)
 
 
 
@@ -321,15 +330,25 @@ if __name__ == '__main__':
     test_cases = {'symbols1': ['MSFT', 'T'],
                   'symbols2': "CRM",
                   'symbols3': ['ORCL', 'T', 'HUBS'],
-                  'symbols4': ['ORCL', 'T', 'HUBS', 'AVLR']
+                  'symbols4': ['ORCL', 'T', 'HUBS', 'AVLR'],
+                  'symbols5': ['ATHN']     #known with no data on 3.1
                   }
+
+    types = ['is', 'bs', 'cf']
 
     fmp = FinancialModelingPrep()
 
     results ={}
-    for k, v in test_cases.items():
-        fmp.set_symbols(v)
-        df1 = fmp.financial_statements()
-        df2 = fmp.financial_statements(chunksize=1, version=3.1)
-        df3 = fmp.financial_statements(chunksize=1, version = 3.1, period='quarter')
-        results.update({k: [df1, df2, df3]})
+    for t in types:
+        l=[]
+        d={}
+        for k, v in test_cases.items():
+            fmp.set_symbols(v)
+            tup1 = fmp.financial_statements(type=t)
+            tup2 = fmp.financial_statements(chunksize=1, type=t, version=3.1)
+            tup3 = fmp.financial_statements(chunksize=1, type=t, version = 3.1, period='quarter')
+            l.extend([tup1, tup2, tup3])
+            d.update({k: l})
+        results.update({t: d})
+
+

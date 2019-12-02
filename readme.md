@@ -49,13 +49,13 @@ Examples:
 
 ### Future
 
-This is currently based on FinancialModelingPrep API version 3.   The comapny is making some adjustments to their API which we hope will result in the following:
+This is currently based on FinancialModelingPrep API version 3 and 3.1 (now in beta).   The company is making some adjustments to their API which we hope will result in the following:
 
-* Clean industry standard JSON.  Currently the API wraps all data in quotes including numeric data.  This requires some post processing to convert from strings to integer or float objects.
+* Clean industry standard JSON.  Currently the API wraps all data in quotes including numeric data.  This requires some post processing to convert from strings to integer or float objects.  (now seems avail in version 3.1)
 
-* Currently the batch prootocols put out a different nesting strucutre than the single symbols protocols which require post processing changes in order to convert to pandas dataframes.
+* Currently the batch prootocols put out a different nesting strucutre than the single symbols protocols which require post processing changes in order to convert to pandas dataframes. (version 3.1 doesn't currently support batches)
 
-* The maximum batch currently is 3 symbols per batch.  This wrapper is written to support a larger batch as that comes available.
+* The maximum batch currently is 3 symbols per batch.  This wrapper is written to support a larger batch as that comes available. (for version 3, version 3.1 only supports chunksize = 1)
 
 
 
@@ -63,7 +63,7 @@ This is currently based on FinancialModelingPrep API version 3.   The comapny is
 ```
 
 ## Updates
-11/12/2019 - added partial support for version 3.1 API now in beta.   Still seeing some instability (server throtting errors).  Had to add a json ditionary normalizer to compensate for the differences in the returned formats between version 3 and 3.1 as well as batch vs. single stock endpoints.  Also, have tested the main financial_statements method fairly extensively.  Other methods are not used in my application and are not thoroughly tested.
+12/2/2019 - added partial support for version 3.1 API now in beta.  Also added timeouts to requests function.   Had to add a json dictionary normalizer to compensate for the differences in the returned formats between version 3 and 3.1 as well as batch vs. single stock endpoints.  Also, have tested the main financial_statements method fairly extensively.  Other methods are not used in my application and are not thoroughly tested.   
 
 ## Contributing
 

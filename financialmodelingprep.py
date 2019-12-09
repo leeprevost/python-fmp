@@ -333,7 +333,6 @@ class FinancialModelingPrep ():
 
 
 
-    #def _generic_batch(self, type, **kwargs):
 
 #for testing/debug
 if __name__ == '__main__':

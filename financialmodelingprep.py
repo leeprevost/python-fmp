@@ -92,7 +92,7 @@ class FinancialModelingPrep ():
 
         params.update(kwargs)
 
-        r = requests.get(url, params, timeout=3.1)
+        r = requests.get(url, params, timeout=6.1)
         print("getting: {}".format(r.url))
         if "3.1" in url:
             raw_jd = json.loads(r.text)
@@ -299,6 +299,14 @@ class FinancialModelingPrep ():
         payload = jd['payload']  # should be list of dictionaries with "sybmol" and "financials" in keys.  financials is list of periodic data
         if "errors" in jd.keys():
             errors = jd['errors']
+            e = {}
+            # convert errors list of dicts to DataFrame even if empty list
+            for item in errors:
+                for k, v in item.items():
+                    e.update({k: v})
+            errors = pd.DataFrame(e).T
+            errors.index.name = 'symbol'
+        #not sure this ever happens
         else:
             errors = None
         #ex_data = payload[0]['financials'][0]
@@ -310,15 +318,17 @@ class FinancialModelingPrep ():
         l = []
 
         for d in payload:
-            df = pd.DataFrame.from_dict(d['financials'])#.astype(types)
+            df = pd.DataFrame.from_dict(d['financials'])
             df.columns = self._camelize_cols(df.columns)
             df.insert(1, 'symbol', d['symbol'])
             l.append(df)
+
         if l:
             df = pd.concat([frame for frame in l]).sort_values(['symbol', 'date'])
-            return ({'errors': errors}, df.set_index(['symbol', 'date'], drop = True))
+
+            return (errors, df.set_index(['symbol', 'date'], drop = True).astype("f"))
         else:
-            return({'errors': errors}, None)
+            return(errors, None)
 
 
 
